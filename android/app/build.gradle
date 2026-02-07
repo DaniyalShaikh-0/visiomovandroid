@@ -1,5 +1,6 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "org.jetbrains.kotlin.plugin.compose"
 apply plugin: "com.facebook.react"
 
 repositories {
@@ -109,6 +110,10 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+
+    buildFeatures {
+        compose true
+    }
 }
 
 dependencies {
@@ -123,9 +128,88 @@ dependencies {
 
     // VisioMove Essential (place VisioMoveEssential.aar in app/libs/)
     implementation fileTree(include: ['*.aar'], dir: 'libs')
-    implementation 'org.jetbrains.kotlin:kotlin-reflect:1.8.10'
+    implementation "org.jetbrains.kotlin:kotlin-reflect:${rootProject.ext.kotlinVersion}"
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.core:core-ktx:1.10.1'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+
+    // Jetpack Compose (used to host the VME map view in a Compose tree)
+    def composeBom = platform('androidx.compose:compose-bom:2024.06.00')
+    implementation composeBom
+    androidTestImplementation composeBom
+    implementation 'androidx.activity:activity-compose:1.9.0'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.compose.material3:material3'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
 }
+
+/**
+ * Optional helper task: downloads and extracts VisioMoveEssential.aar when missing.
+ * This keeps the repo free of proprietary binaries while still enabling a one-command setup.
+ */
+def visioMoveAarFile = file("$projectDir/libs/VisioMoveEssential.aar")
+def visioMoveSdkZipUrl =
+        System.getenv("VISIOMOVE_SDK_ZIP_URL") ?:
+                "https://my.visioglobe.com/sdks/VisioMoveEssential-Android-2.7.0-20260123.zip"
+def visioMoveSdkZipFile = file("$buildDir/VisioMoveEssential-Android-SDK.zip")
+
+tasks.register("prepareVisioMoveEssentialAar") {
+    outputs.file(visioMoveAarFile)
+    doLast {
+        if (visioMoveAarFile.exists()) {
+            logger.lifecycle("VisioMoveEssential.aar already present at ${visioMoveAarFile}")
+            return
+        }
+
+        logger.lifecycle("Downloading VisioMove Essential SDK zip from ${visioMoveSdkZipUrl}")
+        visioMoveAarFile.parentFile.mkdirs()
+        visioMoveSdkZipFile.parentFile.mkdirs()
+
+        try {
+            new URL(visioMoveSdkZipUrl).withInputStream { input ->
+                visioMoveSdkZipFile.withOutputStream { output -> output << input }
+            }
+        } catch (Throwable t) {
+            throw new GradleException(
+                    "Failed to download VisioMove SDK zip. " +
+                            "Either set VISIOMOVE_SDK_ZIP_URL to a reachable URL, " +
+                            "or manually copy VisioMoveEssential.aar into android/app/libs/.",
+                    t
+            )
+        }
+
+        try {
+            def zipFile = new java.util.zip.ZipFile(visioMoveSdkZipFile)
+            def enumeration = zipFile.entries()
+            def entry = null
+            while (enumeration.hasMoreElements()) {
+                def e = enumeration.nextElement()
+                if (!e.isDirectory() && e.name.endsWith("VisioMoveEssential.aar")) {
+                    entry = e
+                    break
+                }
+            }
+            if (entry == null) {
+                throw new GradleException("VisioMoveEssential.aar not found inside downloaded zip: ${visioMoveSdkZipFile}")
+            }
+            zipFile.getInputStream(entry).withCloseable { input ->
+                visioMoveAarFile.withOutputStream { output -> output << input }
+            }
+            zipFile.close()
+            logger.lifecycle("Extracted VisioMoveEssential.aar to ${visioMoveAarFile}")
+        } catch (Throwable t) {
+            throw new GradleException(
+                    "Failed to extract VisioMoveEssential.aar from zip. " +
+                            "You can manually copy VisioMoveEssential.aar into android/app/libs/.",
+                    t
+            )
+        }
+    }
+}
+
+// Ensure the AAR exists before Java/Kotlin compilation.
+preBuild.dependsOn(tasks.named("prepareVisioMoveEssentialAar"))
