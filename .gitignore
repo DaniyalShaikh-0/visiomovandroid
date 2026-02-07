@@ -35,6 +35,10 @@ local.properties
 !debug.keystore
 .kotlin/
 
+# Proprietary SDK artifacts (e.g., VisioMove Essential AAR)
+android/app/libs/*.aar
+android/app/libs/*.jar
+
 # node.js
 #
 node_modules/
