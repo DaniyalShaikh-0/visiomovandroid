@@ -36,7 +36,8 @@ local.properties
 .kotlin/
 
 # Proprietary SDK artifacts (e.g., VisioMove Essential AAR)
-android/app/libs/*.aar
+# Note: VisioMoveEssential.aar is intentionally committed for this repo per project needs.
+# If you add other proprietary binaries, consider ignoring them here.
 android/app/libs/*.jar
 
 # node.js
